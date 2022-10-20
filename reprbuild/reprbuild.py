@@ -19,6 +19,7 @@ import numpy as np
 
 from .constants import REPRLISTATTRIBUTE, MAXRECURSION
 
+
 class ReprError(Exception):
     """Base class for errors raised while processing a representation."""
 

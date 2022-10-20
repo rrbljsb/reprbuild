@@ -65,11 +65,12 @@ def __repr__(self):
 	   tuple_attr   = parser.get_tuple(name,default)
 	   attr_repr    = parser.get_repr(name)
 	   
-	   rebuild_method = parser.get_mapper(class_name)
-	   new_instance   = rebuild_method(repr)
-	   # If name to method map has been populated with 
-	   #    append_class_mapper()
+
 	   attr_repr = parser.get_repr(name)
+	   new_attr  = rebuild_method(attr_repr)
+
+	   # If name to method map has been populated with 
+	   #        append_class_mapper()
 	   new_attr  = parser.rebuild(class_name,attr_repr)
 	   ...
 ```

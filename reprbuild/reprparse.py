@@ -14,6 +14,8 @@ A parser to work with a representation created with qiskit.utils.build_repr.buil
 """
 from typing import Optional
 from .reprbuild import parse_repr, is_valid_repr, ReprError, _builtin_repr
+from .constants import RECREATEMETHOD
+
 
 class ReprParser:
     """class to parse a representation string
@@ -233,15 +235,65 @@ class ReprParser:
         """
         return self._class_name
 
-    def _add_from_repr_map(self, obj_class, class_mapper):
-        self._from_repr_name_mapping[obj_class] = class_mapper
+    def get_repr(self, name):
+        """Return the method registered by the add_class_mapper calls
+        Args:
+            name (str): Attribute class name as string
+        Returns:
+            method:  The method to rebuild an instance from the representation registed in
+                    previous add_class_mapper calls
+        """
+        pass
 
-    def append_class_mapper(self, obj_class):
-        if isinstance(obj_class, list):
-            pass
-        elif isinstance(obj_class, dict):
-            pass
-        elif has_attr(obj_class, from_repr):
-            self._add_from_repr_map(map, map.from_repr)
+    def rebuild(self, name, obj_repr):
+        """Return the method registered by the add_class_mapper calls
+        Args:
+            name (str): Attribute class name as string
+            obj_repr(str): The string representation of the object to be instantiated
+        Returns:
+            object:  The newly instantiated object instance defined in the representation
+        Raises:
+            ReprError: if the mapping is invalid
+        """
+        mapper = self._from_repr_name_mapping.get(name, None)
+        if mapper is None:
+            raise ReprError(f"No {RECREATEMETHOD} method found for {name}")
+        if not is_valid_repr(obj_repr):
+            raise ReprError(f"Invalid representation for {name}")
+        summary = parse_repr(obj_repr)[0]
+        if summary.get("class", "") != name:
+            raise ReprError(
+                f"Class repr mismatch expecting {name}, got {summary.get('class','')}"
+            )
+        return mapper(obj_repr)
+
+    def _add_from_repr_mapping(self, class_name, class_mapper):
+        self._from_repr_name_mapping[class_name] = class_mapper
+
+    def _append_class_to_mapper(self, obj_class):
+        if hasattr(obj_class, RECREATEMETHOD):
+            class_name = obj_class.__class_name__
+            repr_mapper = getattr(obj_class, RECREATEMETHOD)
+            self._add_from_repr_mapping(class_name, repr_mapper)
         else:
-            raise (ReprError(f"No from_repr method in {map.__class_name__}"))
+            raise ReprError(f"No from_repr method in {obj_class.__class_name__}")
+
+    def append_class_mapper(self, class_mapper):
+        """Register a  the method used to rebuild from the recursive representation
+        Args:
+            class_mapper (Union[list, dict, class]): A list of class to be registered, or a dictionary
+                    of names,methods to be registered or a single class to be registered
+        Returns:
+            method:  The method to rebuild an instance from the representation registered in
+                    previous add_class_mapper calls
+        Raises:
+            ReprError: if the mapping is invalid
+        """
+        if isinstance(class_mapper, list):
+            for cur_class in class_mapper:
+                self._append_class_to_mapper(cur_class)
+        elif isinstance(class_mapper, dict):
+            for class_name, mapper in class_mapper.items():
+                self._add_from_repr_mapping(class_name, mapper)
+        else:
+            self._append_class_to_mapper(class_mapper)

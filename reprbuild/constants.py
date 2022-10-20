@@ -17,3 +17,4 @@ is equivalent to A for most reasonable definitions of equivalence.
 
 REPRLISTATTRIBUTE = "_repr_list"
 MAXRECURSION = 200
+RECREATEMETHOD = "from_repr"
