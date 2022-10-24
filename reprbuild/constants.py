@@ -15,6 +15,6 @@ unambiguous enough that we can build a class method such that cls(A).build_repr(
 is equivalent to A for most reasonable definitions of equivalence.
 """
 
-REPRLISTATTRIBUTE = "_repr_list"
+REPRATTRIBUTES = "_repr_attrs"
 MAXRECURSION = 200
-RECREATEMETHOD = "from_repr"
+REBUILDER = "rebuild"

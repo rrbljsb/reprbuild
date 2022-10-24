@@ -10,34 +10,33 @@
 # copyright notice, and modified files need to carry a notice indicating
 # that they have been altered from the originals.
 """
-A parser to work with a representation created with qiskit.utils.build_repr.build_repr()
+A parser Class for working with the recursively built representations
 """
 from typing import Optional
-from .reprbuild import parse_repr, is_valid_repr, ReprError, _builtin_repr
-from .constants import RECREATEMETHOD
+from .reprbuild import is_valid_repr, split_repr, ReprBuildError
+from .constants import REBUILDER
 
 
 class ReprParser:
-    """class to parse a representation string
+    """Class to parse, print and manipulate a recursive object representation
 
     Args:
         obj_repr (str): string representation of the dictionary produced
                         by calls to myClass.__repr__()
 
     Raises:
-        ReprError: if the representation is not a valid dictionary
+        ReprBuildError: if the representation is not a valid dictionary
 
     Additional Information:
     """
 
-    def __init__(self, obj_repr):
-        # Validate and create the string representation and the list representation
+    def __init__(self, obj_repr, rebuilders: [Optional] = None):
         if isinstance(obj_repr, str):
             self._repr_str = obj_repr
             try:
                 obj_repr = eval(obj_repr)  # pylint: disable=eval-used
             except Exception as error:
-                raise ReprError(
+                raise ReprBuildError(
                     "ReprParser argument is invalid representation "
                 ) from error
         else:
@@ -45,13 +44,16 @@ class ReprParser:
             self._repr_str = obj_repr
 
         if not is_valid_repr(obj_repr):
-            raise ReprError("ReprParser argument is invalid representation ")
+            raise ReprBuildError("ReprParser argument is invalid representation ")
 
         self._repr_str = obj_repr
-        (self._summary, self._obj_dict) = parse_repr(self._repr_str)
+        (self._summary, self._obj_defn) = split_repr(self._repr_str)
         self._name = self._summary.get("name", "")
         self._class_name = self._summary.get("class", "")
-        self._from_repr_name_mapping = {}
+        self._is_builtin = self._summary.get("is_builtin", False)
+        self._rebuilder_map = {}
+        if rebuilders is not None:
+            self.append_rebuilder(rebuilders)
 
     def __repr__(self):
         return f"ReprParse for {self._class_name}  {self._name}"
@@ -66,7 +68,7 @@ class ReprParser:
 
         Additional Information:
         """
-        return parse_repr(self._obj_dict.get(name))
+        return split_repr(self._obj_defn.get(name))
 
     def get_complex(self, name, default: [Optional] = None):
         """Get item in the dictionary of type complex
@@ -80,9 +82,9 @@ class ReprParser:
 
         Additional Information:
         """
-        complex_dict = parse_repr(self._obj_dict.get(name))[1]
-        if _builtin_repr(complex_dict) and complex_dict[1] == "complex":
-            return complex(complex_dict[0])
+        complex_defn = split_repr(self._obj_defn.get(name))[1]
+        if _builtin_repr(complex_defn) and complex_defn[1] == "complex":
+            return complex(complex_defn[0])
         else:
             return default
 
@@ -97,10 +99,9 @@ class ReprParser:
 
         Additional Information:
         """
-        summary, item_dict = parse_repr(self._obj_dict.get(name))
+        summary, item_defn = split_repr(self._obj_defn.get(name))
         if summary is not None and summary.get("class", "") in ("dict", "defaultdict"):
-            # TODO: recursion on getting the dictionary to support calibrations
-            return item_dict
+            return item_defn
         else:
             return default
 
@@ -115,13 +116,13 @@ class ReprParser:
 
         Additional Information:
         """
-        item_dict = parse_repr(self._obj_dict.get(name))[1]
+        item_defn = split_repr(self._obj_defn.get(name))[1]
         if (
-            item_dict is not None
-            and _builtin_repr(item_dict)
-            and item_dict[1] == "complex"
+            item_defn is not None
+            and _builtin_repr(item_defn)
+            and item_defn[1] == "complex"
         ):
-            return float(item_dict[0])
+            return float(item_defn[0])
         else:
             return default
 
@@ -136,7 +137,7 @@ class ReprParser:
 
         Additional Information:
         """
-        item_dict = parse_repr(self._obj_dict.get(name, None))[1]
+        item_dict = split_repr(self._obj_defn.get(name, None))[1]
         if item_dict is not None and _builtin_repr(item_dict) and item_dict[1] == "int":
             return int(item_dict[0])
         return default
@@ -152,11 +153,24 @@ class ReprParser:
 
         Additional Information:
         """
-        item_list = self._obj_dict.get(name, None)
+        item_list = self._obj_defn.get(name, None)
         if item_list is None or not isinstance(item_list, (list, set, tuple)):
             item_list = default
 
         return item_list
+
+    def get_repr(self, name, default: [Optional] = None):
+        """Return an representation stored in the parser
+        Args:
+            name (str): Item to be parsed
+            default (class): return value if name is not found
+        Returns:
+            list:  a valid representation for name (if found)
+        """
+        obj_repr = self.get_list(name, None)
+        if not is_valid_repr(obj_repr):
+            obj_repr = default
+        return obj_repr
 
     def get_set(self, name, default: [Optional] = None):
         """Get item in the dictionary and return as a list
@@ -169,11 +183,26 @@ class ReprParser:
 
         Additional Information:
         """
-        summary, item_dict = parse_repr(self._obj_dict.get(name))
+        summary, item_defn = split_repr(self._obj_defn.get(name))
         if summary is not None and summary.get("class", "") == "set":
-            return set(item_dict)
+            return set(item_defn)
         else:
             return default
+
+    def get_string(self, name, default: [Optional] = None):
+        """Return a string element from the parsed representation
+        Args:
+            name (str): Item to be parsed
+            default (class): return value if name is not found
+        Returns:
+            str:  the string value for name
+        """
+        new_string = self._obj_defn.get(name)
+        if not isinstance(new_string, str) and is_valid_repr(new_string):
+            new_string = split_repr(new_string)[1]
+        if not isinstance(new_string, str):
+            new_string = default
+        return new_string
 
     def get_tuple(self, name, default: [Optional] = None):
         """Get item in the dictionary and return as a list
@@ -186,34 +215,21 @@ class ReprParser:
 
         Additional Information:
         """
-        summary, item_dict = parse_repr(self._obj_dict.get(name))
+        summary, item_defn = split_repr(self._obj_defn.get(name))
         if summary is not None and summary.get("class", "") == "tuple":
-            return tuple(item_dict)
+            return tuple(item_defn)
         else:
             return default
 
-    def get_string(self, name, default: [Optional] = None):
-        """Return a string element from the parsed representation
-        Args:
-            name (str): Item to be parsed
-            default (class): return value if name is not found
-        Returns:
-            str:  the string value for name
-        """
-        str_dict = self._obj_dict.get(name, None)
-        if isinstance(str_dict, str):
-            return str_dict
-        return default
-
     @property
-    def obj_dict(self):
+    def obj_defn(self):
         """Return a string element from the parsed representation
         Args:
 
         Returns:
             dict:  the representation as a dictionary
         """
-        return self._obj_dict
+        return self._obj_defn
 
     @property
     def class_name(self):
@@ -233,67 +249,240 @@ class ReprParser:
         Returns:
             str:  the object name
         """
-        return self._class_name
+        return self._name
 
-    def get_repr(self, name):
-        """Return the method registered by the add_class_mapper calls
+    def get_mapper(self, name):
+        """Return the method registered by the add_class_mapper calls for the named class
         Args:
-            name (str): Attribute class name as string
+            name (str): Class name of the mapping method
         Returns:
-            method:  The method to rebuild an instance from the representation registed in
-                    previous add_class_mapper calls
+            method:  The method to rebuild an instance of the object from a representation
         """
-        pass
+        return self._rebuilder_map.get(name, None)
 
-    def rebuild(self, name, obj_repr):
-        """Return the method registered by the add_class_mapper calls
+    def get_parser(self, obj_repr):
+        """Retrieve a parser for the object specified
         Args:
-            name (str): Attribute class name as string
-            obj_repr(str): The string representation of the object to be instantiated
+            obj_repr (Union[str,list]): Either the string name of the attribute or the list
+                        representation of the attribute to build the ReprParser object for
         Returns:
-            object:  The newly instantiated object instance defined in the representation
+            ReprParser: parser loaded with the requested attributes definition and current rebuild map
         Raises:
             ReprError: if the mapping is invalid
         """
-        mapper = self._from_repr_name_mapping.get(name, None)
-        if mapper is None:
-            raise ReprError(f"No {RECREATEMETHOD} method found for {name}")
+        new_parser = None
         if not is_valid_repr(obj_repr):
-            raise ReprError(f"Invalid representation for {name}")
-        summary = parse_repr(obj_repr)[0]
-        if summary.get("class", "") != name:
-            raise ReprError(
-                f"Class repr mismatch expecting {name}, got {summary.get('class','')}"
-            )
-        return mapper(obj_repr)
+            obj_repr = self.get_repr(obj_repr, None)
+        if is_valid_repr(obj_repr):
+            new_parser = ReprParser(obj_repr)
+            if isinstance(new_parser, ReprParser):
+                new_parser.append_rebuilder(self._rebuilder_map)
+        return new_parser
 
-    def _add_from_repr_mapping(self, class_name, class_mapper):
-        self._from_repr_name_mapping[class_name] = class_mapper
-
-    def _append_class_to_mapper(self, obj_class):
-        if hasattr(obj_class, RECREATEMETHOD):
-            class_name = obj_class.__class_name__
-            repr_mapper = getattr(obj_class, RECREATEMETHOD)
-            self._add_from_repr_mapping(class_name, repr_mapper)
-        else:
-            raise ReprError(f"No from_repr method in {obj_class.__class_name__}")
-
-    def append_class_mapper(self, class_mapper):
-        """Register a  the method used to rebuild from the recursive representation
+    def append_rebuilder(self, rebuilder):
+        """Register the method(s) used to rebuild from the recursive representation
         Args:
-            class_mapper (Union[list, dict, class]): A list of class to be registered, or a dictionary
-                    of names,methods to be registered or a single class to be registered
+            rebuilder (Union[list, dict, class]):
+                    A list of classes to be registered,
+                    a dictionary of name,method pairs to be registered, or
+                    a single class to be registered
         Returns:
-            method:  The method to rebuild an instance from the representation registered in
-                    previous add_class_mapper calls
         Raises:
-            ReprError: if the mapping is invalid
+            ReprBuildError: if the method(s) can not be found
         """
-        if isinstance(class_mapper, list):
-            for cur_class in class_mapper:
-                self._append_class_to_mapper(cur_class)
-        elif isinstance(class_mapper, dict):
-            for class_name, mapper in class_mapper.items():
-                self._add_from_repr_mapping(class_name, mapper)
+        if isinstance(rebuilder, list):
+            for obj_class in rebuilder:
+                if hasattr(obj_class, REBUILDER):
+                    self._rebuilder_map[obj_class.__class_name__] = getattr(
+                        obj_class, REBUILDER
+                    )
+                else:
+                    raise ReprBuildError(
+                        f"Rebuild method, {REBUILDER} not found in {obj_class.__class_name__}"
+                    )
+        elif isinstance(rebuilder, dict):
+            for class_name, mapper in rebuilder.items():
+                self._rebuilder_map[class_name] = mapper
         else:
-            self._append_class_to_mapper(class_mapper)
+            if hasattr(rebuilder, REBUILDER):
+                self._rebuilder_map[rebuilder.__class_name__] = getattr(
+                    rebuilder, REBUILDER
+                )
+            else:
+                raise ReprBuildError(
+                    f"No rebuilder {REBUILDER} method in {rebuilder.__class_name__}"
+                )
+
+    def rebuild(self, name: [Optional] = None, obj_repr: [Optional] = None):
+        """Build an instance of the specified object according to the representation
+        Args:
+            name (str): Optional class name as string. If none name from obj_repr will be used
+            obj_repr(str): The representation of the object to be instantiated
+        Returns:
+            object:  The newly instantiated instance defined in the representation
+        Raises:
+            ReprBuildError: if the mapping is invalid
+        """
+        new_obj = None
+        if obj_repr is None and name is not None:
+            obj_repr = self.get_repr(name)
+        else:
+            obj_repr = self._repr_str
+
+        if obj_repr is not None:
+            if name is None:
+                summary = split_repr(obj_repr)[0]
+                if summary is not None:
+                    name = summary.get("class", "")
+
+            new_obj = self._rebuild_builtin(obj_repr)
+            if new_obj is None:
+                mapper = self._rebuilder_map.get(name, None)
+                if mapper is None:
+                    raise ReprBuildError(f"No {REBUILDER} method found for {name}")
+                if not is_valid_repr(obj_repr):
+                    raise ReprBuildError(f"Invalid representation for {name}")
+                new_obj = mapper(obj_repr)
+        return new_obj
+
+    def _rebuild_builtin(self, obj_repr):
+        summary, obj_dict = split_repr(obj_repr)
+        if summary is None:
+            new_attr = None
+        elif isinstance(obj_dict, str):
+            try:
+                new_attr = eval(obj_dict)  # pylint: disable=eval-used
+            except:  # pylint: disable=bare-except
+                new_attr = obj_dict
+        elif isinstance(obj_dict, (tuple, list, dict, set)):
+            if summary.get("class", "") == "str":
+                new_attr = obj_dict[0]
+            elif summary.get("class", "") == "int":
+                new_attr = int(obj_dict[0])
+            elif summary.get("class", "") == "float":
+                new_attr = float(obj_dict[0])
+            elif summary.get("class", "") == "complex":
+                new_attr = complex(obj_dict[0])
+            elif summary.get("class", "") in ("list", "dict"):
+                new_attr = obj_dict
+            elif summary.get("class", "") == "tuple":
+                new_attr = tuple(obj_dict)
+            elif summary.get("class", "") == "set":
+                new_attr = set(obj_dict)
+            else:
+                # TODO: Support numpy and sympy types as builtins
+                new_attr = None
+        else:
+            new_attr = None
+        return new_attr
+
+    def print(self, indent=""):
+        """Print a user friendly version of the representation
+        Args:
+            indent (str):    Indentation level for the output
+        Returns:
+        Raises:
+
+        Additional Information:
+        """
+        if self._class_name in ("str", "int", "float", "complex"):
+            print(f"{indent}{self._obj_defn}")
+        elif self._class_name in ("tuple", "set", "list"):
+            if self._name != "":
+                print(f"{indent}{self._name} : {self._class_name}")
+                indent += "    "
+            _print_repr_list(self._obj_defn, indent=indent)
+        elif self._class_name in ("defaultdict", "dict"):
+            print(f"{indent}{self._name} : {self._class_name}")
+            _print_repr_dict(self._obj_defn, indent=indent + "    ")
+        else:
+            print(f"{indent}{self._name} : {self._class_name}")
+            _print_repr_dict(self._obj_defn, indent + "    ")
+
+
+def _print_repr_element(
+    cur_defn, indent="", header: Optional = None, name: Optional = ""
+):
+    """print the details of a single element of the representation s"""
+    if isinstance(cur_defn, (str, int, float, complex)):
+        print(f"{indent}{name} : {cur_defn}")
+    elif _builtin_repr(cur_defn):
+        item_defn = split_repr(cur_defn)[1]
+        print(f"{indent}{name} : {item_defn[1]}: {item_defn[0]}")
+    elif is_valid_repr(cur_defn):
+        if header is not None and not _builtin_repr(cur_defn):
+            print(header)
+            indent += "    "
+        print_repr(cur_defn, indent)
+    elif isinstance(cur_defn, (tuple, set, list)):
+        if header is not None:
+            print(header)
+            indent += "    "
+        _print_repr_list(cur_defn, indent)
+    elif isinstance(cur_defn, dict):
+        if header is not None:
+            print(header)
+            indent += "    "
+        _print_repr_dict(cur_defn, indent, name=name)
+    else:
+        print_repr(cur_defn, indent)
+
+
+def print_repr(obj_repr, indent="    "):
+    """Print the current object registration
+    Args:
+        obj_repr (Union[str,list]):  Recursive object representation
+        indent (str): The starting indentation for this representation
+    Returns:
+    Raises:
+        ReprBuildError: If argument is not a valid representation
+    """
+    ReprParser(obj_repr).print(indent=indent)
+
+
+def _print_repr_dict(obj_dict, indent="", name: Optional = ""):
+    """print an element that is of type dict"""
+    if is_valid_repr(obj_dict):
+        print_repr(obj_dict, indent)
+    elif isinstance(obj_dict, str):
+        print(f"{indent}{obj_dict}")
+    elif _builtin_repr(obj_dict):
+        print(f"{indent}{name} : {obj_dict[0]} : {obj_dict[1]}")
+    elif isinstance(obj_dict, dict):
+        for cur_name, cur_obj in obj_dict.items():
+            _print_repr_element(
+                cur_obj,
+                indent,
+                name=cur_name,
+                header=f"{indent}{cur_name}: {cur_obj.__class__.__name__}",
+            )
+    elif isinstance(obj_dict, (set, list, tuple)):
+        for item in obj_dict:
+            _print_repr_element(item, indent, name=name)
+    elif obj_dict is not None:
+        print(f"Type mismatch, expecting 'dict' got {type(obj_dict)}")
+
+
+def _print_repr_list(obj_list, indent):
+    """print an element that is of type list, set or tuple"""
+    if is_valid_repr(obj_list):
+        (summary, list_dict) = split_repr(obj_list)
+        print(f"{indent}{summary.get('name','')} : {summary.get('class','Unknown')}")
+        print_repr(list_dict, indent + "    ")
+    elif isinstance(obj_list, (tuple, set, list)):
+        for cur_obj in obj_list:
+            _print_repr_element(cur_obj, indent)
+    else:
+        print(f"Type mismatch expecting 'list' go {type(cur_obj)}")
+
+
+def _builtin_repr(list_dict):
+    if is_valid_repr(list_dict):
+        list_dict = split_repr(list_dict)[1]
+    is_builtin = (
+        isinstance(list_dict, tuple)
+        and (len(list_dict) == 2)
+        and isinstance(list_dict[0], str)
+        and isinstance(list_dict[1], str)
+    )
+    return is_builtin

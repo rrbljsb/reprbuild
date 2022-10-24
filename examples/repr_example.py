@@ -13,8 +13,9 @@
 Example showing how to create a custom representation
 """
 import sys
+from getopt import getopt, GetoptError
 from typing import Optional
-from reprbuild.build_repr import build_repr, print_repr, parse_repr
+from reprbuild import build_repr, print_repr, ReprParser
 
 _usage = "No program usage available"
 
@@ -44,21 +45,15 @@ class myClass:
         name: Optional[str] = None,
     ):
         self._name = name
-        self._repr_list = ["_name"]
+        self._repr_attrs = ["_name"]
 
     def __repr__(self) -> str:
         """to create a recursive repr() for myClass invoke build_repr
         as shown"""
 
         return build_repr(
-            self, attr_list=self._repr_list, depth=-1, detailed=True, deepdive=False
+            self, attr_list=self._repr_attrs, depth=-1, deepdive=False
         )
-
-    def __str__(self) -> str:
-        """optional text output for myClass instance
-        print_repr will print a nicely formatted, indented, multi-line text
-        representation of the instance of myClass"""
-        print_repr(self.__repr__())
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, myClass):
@@ -67,8 +62,8 @@ class myClass:
             return self._name == other._name
 
     @classmethod
-    def from_repr(cls, class_repr=None):
-        """Return a QuantumCircuit based on the input dictionary
+    def rebuild(cls, class_repr=None):
+        """Return an instance of myClass based on the input dictionary
 
         Args:
             class_repr(string): string representation of the repr dictionary
@@ -77,32 +72,13 @@ class myClass:
             myClass: The object equivalent to the instance generating the repr
 
         Raises:
-            QiskitError: if the dictionary is not valid
+            ReprBuildError: if the dictionary is not valid
 
         Additional Information:
-            Create an instance as defined by the dictionary
-            if needed to create instances of an attribute
-
-            from qiskit.utils import ReprParser, parse_repr
-            summary, attr_repr = parser.get_list('attrib')
-            if summary is not None:
-                from qiskit.utils import from_repr_mapper
-                mapper = from_repr_mapper(summary.get('class',''))
-                new_attr = mapper(attr_repr)
         """
-
-        from qiskit.utils import ReprParser
-
         parser = ReprParser(class_repr)
 
         return myClass(name=parser.get_string("_name", "None"))
-
-
-_custom_repr_list = ["_global_phase", "_base_name", "_data"]
-
-def _get_myclass_object():
-
-    return None
 
 
 def _get_cmdline(argv):
@@ -130,16 +106,21 @@ def _get_cmdline(argv):
 
 
 _usage = """custom_repr.p -e <eval> -o <object>
-         eval   : If set, evaluate returned repr and compareot original
-         object : Default is custom
+         eval   : If set, rebuild from returned representation and compare to original
+         object : Default is all
               all         : Run all the example objects
               example1    : Run object 1
               example2    : Run object 2
      """
 
+def _get_example1():
+    return myClass(name="example1")
+
+def _get_example2():
+    return myClass(name="example2")
 
 def main():
-    """Create specific instance and print out the representations for it
+    """Create specific instances and print out the representations for them
     Args:
 
     Returns:
@@ -152,8 +133,8 @@ def main():
     options = _get_cmdline(sys.argv[1:])
 
     example_dict = {
-        "example1", _get_example1,
-        "example2", _get_example2,
+        "example1": _get_example1,
+        "example2": _get_example2,
     }
 
     disp_obj = options["object"]
@@ -165,47 +146,39 @@ def main():
             print(source_obj)
             print_repr(obj_repr, indent="")
             if options["eval"]:
-                new_summary = parse_repr(obj_repr)[0]
-                if new_summary.get("class", "") == "QuantumCircuit":
-                    new_obj = QuantumCircuit.from_repr(class_repr=obj_repr)
+                try:
+                    new_obj = ReprParser(obj_repr,{"myClass":myClass.rebuild}).rebuild()
                     if new_obj == source_obj:
                         print(f"New Object {cur_instance} is equivalent(==) to Original")
                     else:
                         print(
-                            f"---------- New Object {cur_instance} fails equivalence(==) test -------------"
+                            f"------ New Object {cur_instance} fails equivalence(==) test ---------"
                         )
-                else:
-                    print("Currently can only evaluate QuantumCircuits")
-                new_repr = repr(new_obj)
-                print_repr(new_repr)
-    else:
-        if disp_obj in circuit_dict.keys():
-            source_obj = circuit_dict[disp_obj]()
-            obj_repr = repr(source_obj)
-        elif disp_obj == "custom":
-            source_obj = _get_bell_circuit()
-            try:
-                obj_repr = build_repr(source_obj, attr_list=_custom_repr_list, depth=-1)
-            except QiskitError as e:
-                print("Exception during build from representation\n " + str(e))
-        else:
-            print(_usage)
-            sys.exit()
+                    new_repr = repr(new_obj)
+                    ReprParser(new_repr).print()
+                except Exception as e:  # pylint: disable=bare-except
+                    print("Exception during build from representation\n " + str(e))
 
-        print(source_obj)
-        print_repr(obj_repr, indent="")
-        if options["eval"]:
-            new_summary = parse_repr(obj_repr)[0]
-            if new_summary.get("class", "") == "QuantumCircuit":
-                new_obj = QuantumCircuit.from_repr(class_repr=obj_repr)
-            if new_obj == source_obj:
-                print(f"New Object {disp_obj} is equivalent(==) to Original")
-            else:
-                print(
-                    f"---------- New Object {disp_obj} fails equivalence(==) test -------------"
-                )
-            new_repr = repr(new_obj)
-            print_repr(new_repr)
+    else:
+        if disp_obj in example_dict.keys():
+            source_obj = example_dict[disp_obj]()
+            obj_repr = repr(source_obj)
+            print(f"-------------  {disp_obj} ---------------")
+            print(source_obj)
+            ReprParser(obj_repr).print()
+            if options["eval"]:
+                try:
+                    new_obj = ReprParser(obj_repr,{"myClass":myClass.rebuild}).rebuild()
+                    if new_obj == source_obj:
+                        print(f"New Object {disp_obj} is equivalent(==) to Original")
+                    else:
+                        print(
+                            f"---------- New Object {disp_obj} fails equivalence(==) test -------------"
+                        )
+                    new_repr = repr(new_obj)
+                    ReprParser(new_repr).print()
+                except Exception as e:  # pylint: disable=bare-except
+                    print("Exception during build from representation\n " + str(e))
 
 
 if __name__ == "__main__":

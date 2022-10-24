@@ -10,9 +10,9 @@
 # copyright notice, and modified files need to carry a notice indicating
 # that they have been altered from the originals.
 """
-Build a representation such that eval(repr(A)) is a dictionary which can be
+Build a recursive representation such that eval(repr(A)) is a dictionary which can be
 unambiguous enough that we can build a class method such that cls(A).build_repr(eval(A))
 is equivalent to A for most reasonable definitions of equivalence.
 """
-from .reprbuild import build_repr, parse_repr, print_repr, ReprError
-from .reprparse import ReprParser
+from .reprbuild import build_repr, is_valid_repr, split_repr, ReprBuildError
+from .reprparse import ReprParser, print_repr

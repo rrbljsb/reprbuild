@@ -8,49 +8,50 @@ Build recursive python representation without requiring modifcations to all clas
 The goal of this library is to provide tools to build recursive representations that provide a single, unambiguous, authoritative representation of any variable within a system. Tools to build, parse, print and recreate an equivalent instance from the recursive representations are provided.
 
 ## Implementation
-+ Define the class variable _repr_list as Union[list,dict] which defines the class attributes which are to be included in the representation. Optionally define _repr_list as a dict specify attribute namena maximum level. 
-+ Update attribute name and maximum recursion level as desired
++ Define the class variable _repr_attrs as Union[list,dict] which defines the class attributes which are to be included in the representation. Optionally define _repr_list as a dict specify attribute namena maximum level. 
++ Update the constants for list name, rebuild method and maximum recursion as desired 
 ```
-RECREATEMETHOD = "from_repr"
-RECREATELIST + "_from_repr_map"
-REPRLISTATTRIBUTE = "_repr_list"
+REPRATTRIBUTES = "_repr_attrs"
 MAXRECURSION = 200
+REBUILDER = "rebuild"
+
 ```
 + Added the attributes to be included in the representation
 ```
    def __init__(self):
        ...
-       self._repr_list = ["name","rank","serialnum"]
-       self._from_repr_map = {
-          "name" : NameClass.from_repr,
-          "rank" : RankClass.from_repr,
-          "serialnum" : SerialClass.from_repr
+       self._repr_attrs = ["name","rank","serialnum"]
+       
+   @classmethod
+   def get_build_map():
+      return {
+          "name" : NameClass.rebuild,
+          "rank" : RankClass.rebuild,
+          "serialnum" : SerialClass.rebuild
        }
+      
 ```
 + Update or create method __repr__ to use build_repr method
 ```
 def __repr__(self):
-   return reprbuild.build_repr(self,self._repr_list)
+   return reprbuild.build_repr(self,self._repr_attrs)
 ```
 + Add the list of attributes to classes of any attributes included in the representation. The _repr_list is all that is required for the class to be included in the recursive representation.  The class' __repr__ method does not have to be modified/defined unless desired
 + Add the __str__ method if a nicely parsed and indented print of the representation is desired
 ## Print user readable representation
 ```
    def __str__(self):
-      reprbuild.printrepr(build_repr(self)
+      reprbuild.print_repr(build_repr(self)
 ```
 
 ## Build an equivalent instance from representation
-+ Implement the from_repr() method for all attributes included in the recursive representation
++ Implement the rebuild() method for all attributes included in the recursive representation
 + Create a parser
-+ If desired, add the from_repr() methods to the parser
++ If desired, add the rebuild() methods to the parser
 ```
-   from reprbuild import ReprParser, parse_repr
-   def from_repr(self,obj_repr)
-       parser = ReprParse(obj_repr)
-       parser.append_class_mapper(dict)
-       parser.append_class_mapper(name,from_repr_method)
-       
+   from reprbuild import ReprParser
+   def rebuild(self,obj_repr)
+       parser = ReprParse(obj_repr, cls.get_build_map()       
        ....
          Code to retrieve neccessary attributes and build an
          equivalent instance
@@ -65,13 +66,11 @@ def __repr__(self):
 	   tuple_attr   = parser.get_tuple(name,default)
 	   attr_repr    = parser.get_repr(name)
 	   
-
-	   attr_repr = parser.get_repr(name)
-	   new_attr  = rebuild_method(attr_repr)
+	   new_attr  = parser.get_parser(attr_repr).rebuild()
 
 	   # If name to method map has been populated with 
 	   #        append_class_mapper()
-	   new_attr  = parser.rebuild(class_name,attr_repr)
+	   new_attr  = parser.get_parser(class_name,attr_repr).rebuild()
 	   ...
 ```
   
