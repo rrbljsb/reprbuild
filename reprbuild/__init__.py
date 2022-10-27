@@ -15,4 +15,4 @@ unambiguous enough that we can build a class method such that cls(A).build_repr(
 is equivalent to A for most reasonable definitions of equivalence.
 """
 from .reprbuild import build_repr, is_valid_repr, split_repr, ReprBuildError
-from .reprparse import ReprParser, print_repr
+from .reprparse import ReprParser, format_repr

@@ -15,10 +15,15 @@ Example showing how to create a custom representation
 import sys
 from getopt import getopt, GetoptError
 from typing import Optional
-from reprbuild import build_repr, print_repr, ReprParser
+from reprbuild import build_repr, is_valid_repr, ReprParser
 
-_usage = "No program usage available"
-
+USAGE = """custom_repr.p -e <eval> -o <object>
+         eval   : If set, rebuild from returned representation and compare to original
+         object : Default is all
+              all         : Run all the example objects
+              example1    : Run object 1
+              example2    : Run object 2
+     """
 
 class myClass:
     """class template compatible with recursive repr() generation and
@@ -55,6 +60,11 @@ class myClass:
             self, attr_list=self._repr_attrs, depth=-1, deepdive=False
         )
 
+    def __str__(self):
+        from reprbuild import format_repr
+
+        return format_repr(build_repr(self, attr_list=self._repr_attrs))
+
     def __eq__(self, other) -> bool:
         if not isinstance(other, myClass):
             return False
@@ -88,7 +98,7 @@ def _get_cmdline(argv):
             argv, "heo:", ["object=", "eval"]
         )
     except GetoptError:
-        print(_usage)
+        print(USAGE)
         sys.exit(2)
     # Set default values
     _options = {}
@@ -96,7 +106,7 @@ def _get_cmdline(argv):
     _options["eval"] = False
     for opt, arg in opts:
         if opt == "-h":
-            print(_usage)
+            print(USAGE)
             sys.exit()
         elif opt in ("-o", "--object"):
             _options["object"] = arg
@@ -105,19 +115,51 @@ def _get_cmdline(argv):
     return _options
 
 
-_usage = """custom_repr.p -e <eval> -o <object>
-         eval   : If set, rebuild from returned representation and compare to original
-         object : Default is all
-              all         : Run all the example objects
-              example1    : Run object 1
-              example2    : Run object 2
-     """
-
 def _get_example1():
     return myClass(name="example1")
 
 def _get_example2():
     return myClass(name="example2")
+
+
+examples_dict = {
+    "example1": _get_example1,
+    "example2": _get_example2,
+}
+
+def _check_repr( cur_obj, eval_repr=False):
+
+    attr_rebuilders = {
+        "myClass", myClass.rebuild
+    }
+
+    source_obj = examples_dict[cur_obj]()
+    obj_repr = repr(source_obj)
+    if not is_valid_repr(obj_repr) and hasattr(source_obj, "_repr_attrs"):
+        obj_repr = build_repr(source_obj, attr_list=source_obj._repr_attrs)
+    parser = ReprParser(obj_repr, attr_rebuilders)
+    print(f"-------------  {cur_obj} ---------------")
+    print(source_obj)
+    print(f"------------- parser({cur_obj}).print ---------------")
+    parser.print()
+    if eval_repr:
+        try:
+            new_obj = parser.rebuild(parser.class_name,obj_repr)
+            if new_obj == source_obj:
+                print(f"New Object {cur_obj} is equivalent(==) to Original")
+            else:
+                print(
+                    f"------ New Object {cur_obj} fails equivalence(==) test ---------"
+                )
+            print(f"------------- print( New {cur_obj} )---------------")
+            print(new_obj)
+            new_repr = repr(new_obj)
+            if not is_valid_repr(new_repr) and hasattr(new_obj, "_repr_attrs"):
+                new_repr = build_repr(new_obj, attr_list=new_obj._repr_attrs)
+            print(f"------------- parser( New {cur_obj}).print ---------------")
+        except Exception as error:  # pylint: disable=bare-except
+            print(f"---- Unable to rebuild {cur_obj} to perform equivalence(==) test ----")
+            print(f"Returned Exception{error}")
 
 def main():
     """Create specific instances and print out the representations for them
@@ -131,55 +173,13 @@ def main():
     """
 
     options = _get_cmdline(sys.argv[1:])
-
-    example_dict = {
-        "example1": _get_example1,
-        "example2": _get_example2,
-    }
-
     disp_obj = options["object"]
     if disp_obj == "all":
-        for cur_instance in example_dict:
-            source_obj = example_dict[cur_instance]()
-            obj_repr = repr(source_obj)
-            print(f"-------------  {cur_instance} ---------------")
-            print(source_obj)
-            print_repr(obj_repr, indent="")
-            if options["eval"]:
-                try:
-                    new_obj = ReprParser(obj_repr,{"myClass":myClass.rebuild}).rebuild()
-                    if new_obj == source_obj:
-                        print(f"New Object {cur_instance} is equivalent(==) to Original")
-                    else:
-                        print(
-                            f"------ New Object {cur_instance} fails equivalence(==) test ---------"
-                        )
-                    new_repr = repr(new_obj)
-                    ReprParser(new_repr).print()
-                except Exception as e:  # pylint: disable=bare-except
-                    print("Exception during build from representation\n " + str(e))
-
+        disp_list = examples_dict
     else:
-        if disp_obj in example_dict.keys():
-            source_obj = example_dict[disp_obj]()
-            obj_repr = repr(source_obj)
-            print(f"-------------  {disp_obj} ---------------")
-            print(source_obj)
-            ReprParser(obj_repr).print()
-            if options["eval"]:
-                try:
-                    new_obj = ReprParser(obj_repr,{"myClass":myClass.rebuild}).rebuild()
-                    if new_obj == source_obj:
-                        print(f"New Object {disp_obj} is equivalent(==) to Original")
-                    else:
-                        print(
-                            f"---------- New Object {disp_obj} fails equivalence(==) test -------------"
-                        )
-                    new_repr = repr(new_obj)
-                    ReprParser(new_repr).print()
-                except Exception as e:  # pylint: disable=bare-except
-                    print("Exception during build from representation\n " + str(e))
-
+        disp_list = disp_obj.split(",")
+    for cur_obj in disp_list:
+        _check_repr(cur_obj,options["eval"])
 
 if __name__ == "__main__":
     main()

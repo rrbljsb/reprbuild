@@ -376,6 +376,32 @@ class ReprParser:
             new_attr = None
         return new_attr
 
+    def format_repr(self, indent=""):
+        """Return a user friendly version of the representation
+        Args:
+            indent (str):    Indentation level for the output
+        Returns:
+            str: Nicely formatted representation
+        Raises:
+
+        Additional Information:
+        """
+        if self._class_name in ("str", "int", "float", "complex"):
+            return_str = f"{indent}{self._obj_defn}\n"
+        elif self._class_name in ("tuple", "set", "list"):
+            return_str = ""
+            if self._name != "":
+                return_str += f"{indent}{self._name} : {self._class_name}\n"
+                indent += "    "
+            return_str += _format_repr_list(self._obj_defn, indent=indent)
+        elif self._class_name in ("defaultdict", "dict"):
+            return_str = f"{indent}{self._name} : {self._class_name}\n"
+            return_str += _format_repr_dict(self._obj_defn, indent=indent + "    ")
+        else:
+            return_str = f"{indent}{self._name} : {self._class_name}\n"
+            return_str += _format_repr_dict(self._obj_defn, indent + "    ")
+        return return_str
+
     def print(self, indent=""):
         """Print a user friendly version of the representation
         Args:
@@ -385,47 +411,7 @@ class ReprParser:
 
         Additional Information:
         """
-        if self._class_name in ("str", "int", "float", "complex"):
-            print(f"{indent}{self._obj_defn}")
-        elif self._class_name in ("tuple", "set", "list"):
-            if self._name != "":
-                print(f"{indent}{self._name} : {self._class_name}")
-                indent += "    "
-            _print_repr_list(self._obj_defn, indent=indent)
-        elif self._class_name in ("defaultdict", "dict"):
-            print(f"{indent}{self._name} : {self._class_name}")
-            _print_repr_dict(self._obj_defn, indent=indent + "    ")
-        else:
-            print(f"{indent}{self._name} : {self._class_name}")
-            _print_repr_dict(self._obj_defn, indent + "    ")
-
-
-def _print_repr_element(
-    cur_defn, indent="", header: Optional = None, name: Optional = ""
-):
-    """print the details of a single element of the representation s"""
-    if isinstance(cur_defn, (str, int, float, complex)):
-        print(f"{indent}{name} : {cur_defn}")
-    elif _builtin_repr(cur_defn):
-        item_defn = split_repr(cur_defn)[1]
-        print(f"{indent}{name} : {item_defn[1]}: {item_defn[0]}")
-    elif is_valid_repr(cur_defn):
-        if header is not None and not _builtin_repr(cur_defn):
-            print(header)
-            indent += "    "
-        print_repr(cur_defn, indent)
-    elif isinstance(cur_defn, (tuple, set, list)):
-        if header is not None:
-            print(header)
-            indent += "    "
-        _print_repr_list(cur_defn, indent)
-    elif isinstance(cur_defn, dict):
-        if header is not None:
-            print(header)
-            indent += "    "
-        _print_repr_dict(cur_defn, indent, name=name)
-    else:
-        print_repr(cur_defn, indent)
+        print(self.format_repr(indent=indent))
 
 
 def print_repr(obj_repr, indent="    "):
@@ -437,43 +423,93 @@ def print_repr(obj_repr, indent="    "):
     Raises:
         ReprBuildError: If argument is not a valid representation
     """
-    ReprParser(obj_repr).print(indent=indent)
+    print(format_repr(obj_repr, indent=indent))
 
 
-def _print_repr_dict(obj_dict, indent="", name: Optional = ""):
+def format_repr(obj_repr, indent="    "):
+    """Print the current object registration
+    Args:
+        obj_repr (Union[str,list]):  Recursive object representation
+        indent (str): The starting indentation for this representation
+    Returns:
+        str: Nice formatted representation
+    Raises:
+        ReprBuildError: If argument is not a valid representation
+    """
+    return ReprParser(obj_repr).format_repr(indent=indent)
+
+
+def _format_repr_dict(obj_dict, indent="", name: Optional = ""):
     """print an element that is of type dict"""
     if is_valid_repr(obj_dict):
-        print_repr(obj_dict, indent)
+        return_str = format_repr(obj_dict, indent)
     elif isinstance(obj_dict, str):
-        print(f"{indent}{obj_dict}")
+        return_str = f"{indent}{obj_dict}\n"
     elif _builtin_repr(obj_dict):
-        print(f"{indent}{name} : {obj_dict[0]} : {obj_dict[1]}")
+        return_str = f"{indent}{name} : {obj_dict[0]} : {obj_dict[1]}\n"
     elif isinstance(obj_dict, dict):
+        return_str = ""
         for cur_name, cur_obj in obj_dict.items():
-            _print_repr_element(
+            return_str += _format_repr_element(
                 cur_obj,
                 indent,
                 name=cur_name,
-                header=f"{indent}{cur_name}: {cur_obj.__class__.__name__}",
+                header=f"{indent}{cur_name}: {cur_obj.__class__.__name__}\n",
             )
     elif isinstance(obj_dict, (set, list, tuple)):
+        return_str = ""
         for item in obj_dict:
-            _print_repr_element(item, indent, name=name)
+            return_str += _format_repr_element(item, indent, name=name)
     elif obj_dict is not None:
-        print(f"Type mismatch, expecting 'dict' got {type(obj_dict)}")
+        return_str = f"Type mismatch, expecting 'dict' got {type(obj_dict)}\n"
+    return return_str
 
 
-def _print_repr_list(obj_list, indent):
+def _format_repr_element(
+    cur_defn, indent="", header: Optional = None, name: Optional = ""
+):
+    """print the details of a single element of the representation s"""
+    return_str = ""
+    if isinstance(cur_defn, (str, int, float, complex)):
+        return_str = f"{indent}{name} : {cur_defn}\n"
+    elif _builtin_repr(cur_defn):
+        item_defn = split_repr(cur_defn)[1]
+        return_str = f"{indent}{name} : {item_defn[1]}: {item_defn[0]}\n"
+    elif is_valid_repr(cur_defn):
+        if header is not None and not _builtin_repr(cur_defn):
+            return_str += header
+            indent += "    "
+        return_str += format_repr(cur_defn, indent)
+    elif isinstance(cur_defn, (tuple, set, list)):
+        if header is not None:
+            return_str += header
+            indent += "    "
+        return_str += _format_repr_list(cur_defn, indent)
+    elif isinstance(cur_defn, dict):
+        if header is not None:
+            return_str += header
+            indent += "    "
+        return_str += _format_repr_dict(cur_defn, indent, name=name)
+    else:
+        return_str = format_repr(cur_defn, indent)
+    return return_str
+
+
+def _format_repr_list(obj_list, indent):
     """print an element that is of type list, set or tuple"""
+    return_str = ""
     if is_valid_repr(obj_list):
         (summary, list_dict) = split_repr(obj_list)
-        print(f"{indent}{summary.get('name','')} : {summary.get('class','Unknown')}")
-        print_repr(list_dict, indent + "    ")
+        return_str += (
+            f"{indent}{summary.get('name','')} : {summary.get('class','Unknown')}\n"
+        )
+        return_str += format_repr(list_dict, indent + "    ")
     elif isinstance(obj_list, (tuple, set, list)):
         for cur_obj in obj_list:
-            _print_repr_element(cur_obj, indent)
+            return_str += _format_repr_element(cur_obj, indent)
     else:
-        print(f"Type mismatch expecting 'list' go {type(cur_obj)}")
+        return_str = f"Type mismatch expecting 'list' go {type(cur_obj)}\n"
+    return return_str
 
 
 def _builtin_repr(list_dict):
